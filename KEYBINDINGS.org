@@ -1,0 +1,26 @@
+#+TITLE: Doom Keybinds Cheat Sheet
+
+* Global
+- SPC o t :: Open vterm
+- SPC o f :: Toggle Treemacs file tree
+- SPC o a :: Org Agenda
+- SPC o c :: Org Capture
+- SPC o C :: Calendar
+- SPC o o :: Open Obsidian vault (dired)
+
+* My Menu (SPC m)
+- m n :: Capture Note
+- m t :: Capture Todo
+- m j :: Journal (datetree)
+- m a :: Agenda
+- m o :: Vault in dired
+- m T :: Terminal
+- m F :: File tree
+- m r :: Python REPL
+
+* Python (SPC p …)
+- p r :: Python REPL
+- p b :: Send buffer to REPL
+- p e :: Send region to REPL
+- p v :: Choose venv (pyvenv)
+- p V :: Deactivate venv

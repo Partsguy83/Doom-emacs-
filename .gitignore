@@ -1,0 +1,11 @@
+*.elc
+eln-cache/
+auto-save-list/
+backup/
+bookmarks
+.elpa/
+straight/
+var/
+etc/
+.DS_Store
+Thumbs.db
