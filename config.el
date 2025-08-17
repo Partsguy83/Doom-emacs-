@@ -1,18 +1,46 @@
-;;; ~/.doom.d/config.el -*- lexical-binding: t; -*-
+;;; config.el -*- lexical-binding: t; -*-
 
-;; ----- Identity -----
-(setq user-full-name "Zach Harrison"
-      user-mail-address "partsguy83@gmail.com")
-
-;; ----- Fonts & Theme -----
-;; Tip: ensure "Hack Nerd Font" is installed on your system
-(setq doom-font (font-spec :family "Hack Nerd Font" :size 17)
-      doom-variable-pitch-font (font-spec :family "Hack Nerd Font" :size 17)
-      doom-theme 'doom-dracula
+;; --------------------------- Joker look ---------------------------
+;; Base theme + neon-green/purple accents
+(setq doom-theme 'doom-dracula
       display-line-numbers-type 'relative)
 
-;; ----- Obsidian / Org basics -----
-;; Point Org at your Obsidian vault (adjust this path to your vault)
+;; Fonts (install a Nerd Font for icons; "Hack Nerd Font" is great)
+(setq doom-font (font-spec :family "Hack Nerd Font" :size 17)
+      doom-variable-pitch-font (font-spec :family "Hack Nerd Font" :size 17))
+
+;; Neon tweaks
+(custom-set-faces!
+  '(cursor :background "#39ff14")
+  '(mode-line :background "#2a1535" :foreground "#39ff14" :weight bold)
+  '(mode-line-inactive :background "#1a0f22" :foreground "#7a7a7a")
+  '(vertico-current :background "#2a1535" :foreground "#ffffff" :weight bold)
+  '(font-lock-string-face :foreground "#39ff14") ; strings pop neon green
+  '(font-lock-constant-face :foreground "#b48ead") ; purple constants
+  )
+
+;; Which-key fast + readable
+(setq which-key-idle-delay 0.25)
+(after! which-key
+  (setq which-key-max-description-length 50))
+
+;; --------------------------- Terminal & File Tree -----------------
+(after! treemacs
+  (treemacs-follow-mode 1)
+  (treemacs-filewatch-mode 1))
+(map! :leader
+      :desc "Toggle Treemacs" "t t" #'treemacs)
+
+(after! vterm
+  (setq vterm-shell (or (getenv "SHELL") "/bin/bash")))
+(defun +term/here ()
+  "Open vterm rooted at the project (or current) directory."
+  (interactive)
+  (let ((default-directory (or (projectile-project-root) default-directory)))
+    (vterm)))
+(map! :leader :desc "Terminal here (vterm)" "t v" #'+term/here)
+
+;; --------------------------- Org / Jupyter ------------------------
 (setq org-directory "~/obsidian-sync/"
       org-default-notes-file (expand-file-name "inbox.org" org-directory)
       org-agenda-files (list org-directory
@@ -20,7 +48,6 @@
                              (expand-file-name "Journal" org-directory)))
 
 (after! org
-  ;; Fast capture for notes, todos, and a datetree journal (works even without org-journal)
   (setq org-capture-templates
         '(("n" "Quick Note" entry
            (file+headline org-default-notes-file "Notes")
@@ -30,113 +57,118 @@
            "* TODO %?\nSCHEDULED: %t\n%U\n")
           ("j" "Journal (datetree)" entry
            (file+olp+datetree (expand-file-name "Journal/journal.org" org-directory))
-           "* %U - %?\n%i\n"))))
+           "* %U - %?\n%i\n")))
+  ;; Enable Jupyter blocks (requires the `jupyter` package)
+  (add-to-list 'org-babel-load-languages '(jupyter . t)))
 
-;; Optional: org-journal (nice daily files). Add `(package! org-journal)` to packages.el if you enable this.
-(when (featurep! :lang org)
-  (use-package! org-journal
-    :defer t
-    :init
-    (setq org-journal-directory (expand-file-name "Journal/" org-directory)
-          org-journal-file-type 'daily
-          org-journal-file-format "%Y-%m-%d.org"
-          org-journal-enable-agenda-integration t
-          org-journal-date-prefix "#+TITLE: "
-          org-journal-date-format "%A, %B %d %Y"
-          org-journal-time-prefix "* ")))
+;; --------------------------- Python IDE ---------------------------
+;; Prefer IPython if present
+(let ((ip (executable-find "ipython")))
+  (when ip
+    (setq python-shell-interpreter ip
+          python-shell-interpreter-args "-i --simple-prompt")))
 
+;; LSP behavior (Pyright by default if installed)
+(after! lsp-mode
+  (setq lsp-idle-delay 0.25
+        lsp-log-io nil
+        lsp-file-watch-threshold 10000))
 
-;; ----- Python: formatting, REPL, venv helpers -----
-;; Uses Black on save (install 'black' in your venv or system).
-;; Add `(package! blacken)` to packages.el.
+;; Start Ruff LSP too, if available (pip install ruff-lsp)
+(add-hook 'python-mode-hook
+          (defun +python/start-ruff-lsp ()
+            (when (executable-find "ruff-lsp")
+              (require 'lsp-mode)
+              (lsp-deferred))))
+
+;; Format with Black on save
 (use-package! blacken
   :hook (python-mode . blacken-mode)
   :custom (blacken-line-length 88))
 
-;; Make Doom’s formatter system prefer Black too (if you use :editor (format +onsave))
-(after! python
-  (setq python-shell-interpreter "python"))
+;; Auto-activate project venv (.venv) or Poetry env
+(defun +python/auto-activate-venv ()
+  "Activate .venv or Poetry env automatically."
+  (when-let* ((root (or (projectile-project-root) default-directory)))
+    (cond
+     ((file-directory-p (expand-file-name ".venv" root))
+      (pyvenv-activate (expand-file-name ".venv" root)))
+     ((executable-find "poetry")
+      (let ((path (string-trim
+                   (shell-command-to-string "poetry env info --path 2>/dev/null"))))
+        (when (and (string-match-p "/" path) (file-directory-p path))
+          (pyvenv-activate path)))))))
+(add-hook 'python-mode-hook #'+python/auto-activate-venv)
 
-;; Handy Python keybinds (REPL, send buffer/region, pick venv)
-(map! :leader
-      (:prefix ("p" . "python")
-       :desc "Python REPL"          "r" #'python-shell-switch-to-shell
-       :desc "Send buffer to REPL"  "b" #'python-shell-send-buffer
-       :desc "Send region to REPL"  "e" #'python-shell-send-region
-       :desc "Choose venv (pyvenv)" "v" #'pyvenv-activate
-       :desc "Deactivate venv"      "V" #'pyvenv-deactivate))
-
-;; ----- Ops under SPC o (safer explicit prefix) -----
-(map! :leader
-      (:prefix ("o" . "Ops")
-       :desc "Org Agenda"     "a" #'org-agenda
-       :desc "New Capture"    "c" #'org-capture
-       :desc "Calendar"       "C" #'calendar
-       :desc "Vault (dired)"  "o" (cmd! (dired org-directory))
-       :desc "Open vterm"     "t" #'vterm
-       :desc "Toggle tree"    "f" #'treemacs))
-
-;; ----- “My Menu” (simple, discoverable prefix under SPC m) -----
-(map! :leader
-      (:prefix ("m" . "My Menu")
-       :desc "Notes inbox capture"      "n" (cmd! (org-capture nil "n"))
-       :desc "Todo capture"             "t" (cmd! (org-capture nil "t"))
-       :desc "Journal today (datetree)" "j" (cmd! (org-capture nil "j"))
-       :desc "Agenda"                   "a" #'org-agenda
-       :desc "Vault in dired"           "o" (cmd! (dired org-directory))
-       :desc "Terminal"                 "T" #'vterm
-       :desc "File tree"                "F" #'treemacs
-       :desc "Python REPL"              "r" #'python-shell-switch-to-shell))
-
-;; --- Python workflow cheat sheet quick access ---
-(defun +open-python-cheatsheet ()
-  "Open my Doom Python workflow cheat sheet."
+;; Quick venv creator
+(defun +python/project-new-venv ()
+  "Create .venv with `python -m venv .venv` and activate."
   (interactive)
-  (find-file "~/obsidian-sync/Doom-Python-Cheatsheet.org"))
+  (let ((root (or (projectile-project-root) default-directory)))
+    (unless root (user-error "Not in a project"))
+    (let ((default-directory root))
+      (shell-command "python -m venv .venv")
+      (pyvenv-activate (expand-file-name ".venv" root))
+      (message "Activated %s" (expand-file-name ".venv" root)))))
 
+;; Debugger (DAP)
+(after! dap-mode
+  (require 'dap-python)
+  (setq dap-python-executable (or (executable-find "python") "python")
+        dap-auto-configure-features '(sessions locals breakpoints expressions)))
+(with-eval-after-load 'dap-python
+  (dap-register-debug-template
+   "Python :: Run file"
+   (list :type "python" :request "launch" :name "Python :: Run file"
+         :program "${file}" :cwd nil :console "integratedTerminal"))
+  (dap-register-debug-template
+   "Python :: Module (pytest)"
+   (list :type "python" :request "launch" :name "Python :: Module (pytest)"
+         :module "pytest" :args "" :cwd nil :console "integratedTerminal")))
+
+;; Tests & Coverage
+(use-package! python-pytest
+  :commands (python-pytest-dispatch python-pytest-file python-pytest-function python-pytest-repeat))
+(use-package! coverage
+  :commands (coverage-mode)
+  :init
+  (defun +python/coverage-toggle () (interactive) (coverage-mode 'toggle)))
+
+;; Docstrings
+(use-package! python-docstring
+  :hook (python-mode . python-docstring-mode)
+  :config (setq python-docstring-style 'google))
+(use-package! sphinx-doc
+  :hook (python-mode . sphinx-doc-mode)
+  :config (map! :localleader :map python-mode-map "d" #'sphinx-doc))
+
+;; --------------------------- Keys you’ll actually use -------------
+;; Files / buffers / windows / projects (Doom defaults are on, these add a few)
 (map! :leader
-      :desc "Python workflow cheatsheet"
-      "h P" #'+open-python-cheatsheet)
+      ;; files
+      :desc "Find file"      "f f" #'find-file
+      :desc "Save buffer"    "f s" #'save-buffer
+      :desc "Recent files"   "f r" #'recentf-open-files
+      ;; buffers
+      :desc "Switch buffer"  "b b" #'switch-to-buffer
+      :desc "Kill buffer"    "b k" #'kill-this-buffer
+      ;; windows
+      :desc "Split right"    "w /" #'split-window-right
+      :desc "Split below"    "w -" #'split-window-below
+      :desc "Delete window"  "w d" #'delete-window
+      ;; projects
+      :desc "Switch project" "p p" #'project-switch-project
+      :desc "Project files"  "p f" #'project-find-file)
 
-
-;; ----- Keybind Cheat Sheet (lives in ~/.doom.d/KEYBINDINGS.org) -----
-(defun +keys/open-cheatsheet ()
-  "Open or create a simple keybind cheat sheet in your Doom dir."
-  (interactive)
-  (let* ((file (expand-file-name "KEYBINDINGS.org" doom-user-dir))
-         (exists (file-exists-p file)))
-    (unless exists
-      (with-temp-file file
-        (insert "#+TITLE: Doom Keybinds Cheat Sheet\n\n"
-                "* Global\n"
-                "- SPC o t :: Open vterm\n"
-                "- SPC o f :: Toggle Treemacs file tree\n"
-                "- SPC o a :: Org Agenda\n"
-                "- SPC o c :: Org Capture\n"
-                "- SPC o C :: Calendar\n"
-                "- SPC o o :: Open Obsidian vault (dired)\n\n"
-                "* My Menu (SPC m)\n"
-                "- m n :: Capture Note\n"
-                "- m t :: Capture Todo\n"
-                "- m j :: Journal (datetree)\n"
-                "- m a :: Agenda\n"
-                "- m o :: Vault in dired\n"
-                "- m T :: Terminal\n"
-                "- m F :: File tree\n"
-                "- m r :: Python REPL\n\n"
-                "* Python (SPC p …)\n"
-                "- p r :: Python REPL\n"
-                "- p b :: Send buffer to REPL\n"
-                "- p e :: Send region to REPL\n"
-                "- p v :: Choose venv (pyvenv)\n"
-                "- p V :: Deactivate venv\n")))
-    (find-file file)))
-
-(map! :leader :desc "Keybind cheat sheet" "h k" #'+keys/open-cheatsheet)
-
-;; ----- Quality of life -----
-(setq confirm-kill-emacs nil)   ; live dangerously ;)
-(setq which-key-idle-delay 0.25)
-(after! which-key
-  (setq which-key-max-description-length 40))
+;; Python submap under SPC p y (so it’s memorable)
+(map! :leader
+      (:prefix ("p y" . "python")
+       :desc "REPL"                 "r" #'python-shell-switch-to-shell
+       :desc "Send buffer → REPL"   "b" #'python-shell-send-buffer
+       :desc "Send region → REPL"   "e" #'python-shell-send-region
+       :desc "Activate venv"        "v" #'+python/auto-activate-venv
+       :desc "New .venv here"       "n" #'+python/project-new-venv
+       :desc "PyTest (dispatch)"    "x" #'python-pytest-dispatch
+       :desc "Coverage toggle"      "c" #'+python/coverage-toggle
+       :desc "Start debug (DAP)"    "d" #'dap-debug))
 
