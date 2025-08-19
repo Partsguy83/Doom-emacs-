@@ -8,12 +8,12 @@
  :ui
  doom
  doom-dashboard
+ treemacs
  hl-todo
  indent-guides
  modeline
  nav-flash
  (popup +defaults)
- treemacs
  vc-gutter
  vi-tilde-fringe
  workspaces

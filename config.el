@@ -19,17 +19,86 @@
   '(font-lock-constant-face :foreground "#b48ead") ; purple constants
   )
 
+;; --- Org-roam core ---
+(use-package! org-roam
+  :after org
+  :init
+  (setq org-roam-v2-ack t
+        ;; Point Org-roam into your Obsidian vault (subfolder "roam")
+        org-roam-directory (file-truename "~/obsidian-sync/roam")
+        ;; Keep backlinks up to date automatically
+        org-roam-db-location (expand-file-name "org-roam.db" org-roam-directory))
+  :config
+  (org-roam-db-autosync-mode)
+
+  ;; Helpful templates (adjust titles & fields to taste)
+  (setq org-roam-capture-templates
+        '(("n" "Note" plain
+           "%?"
+           :if-new (file+head "${slug}.org"
+                              "#+title: ${title}\n#+created: %U\n")
+           :unnarrowed t)
+          ("p" "Project" plain
+           "* Overview\n%?\n* Tasks\n- [ ] \n* Notes\n"
+           :if-new (file+head "projects/${slug}.org"
+                              "#+title: ${title}\n#+category: Project\n#+created: %U\n")
+           :unnarrowed t)
+          ;; Example for your divisions
+          ("w" "Work item (SunCo)" plain
+           "* TODO %^{Task}\n:PROPERTIES:\n:division: %^{Division|Turf|Commercial Maintenance|Residential Maintenance|Residential Sprinklers|Commercial Sprinklers}\n:END:\n%?\n"
+           :if-new (file+head "work/${slug}.org"
+                              "#+title: ${title}\n#+category: Work\n#+created: %U\n")
+           :unnarrowed t)))
+
+  ;; Doom-style leader keys for roam
+  (map! :leader
+        :desc "Roam: Find node"    "n r f"  #'org-roam-node-find
+        :desc "Roam: Insert node"  "n r i"  #'org-roam-node-insert
+        :desc "Roam: Backlinks"    "n r b"  #'org-roam-buffer-toggle
+        :desc "Roam: Graph"        "n r g"  #'org-roam-graph))
+
+;; --- Dailies (Zettelkasten-style) ---
+(use-package! org-roam-dailies
+  :after org-roam
+  :init
+  ;; Dailies live alongside your notes inside the vault
+  (setq org-roam-dailies-directory "daily/")
+  :config
+  (setq org-roam-dailies-capture-templates
+        '(("d" "Default" entry
+           "* %<%H:%M> %?"
+           :if-new (file+head "%<%Y-%m-%d>.org"
+                              "#+title: %<%Y-%m-%d>\n#+created: %U\n"))))
+  (map! :leader
+        :desc "Daily: Today"   "n r d t" #'org-roam-dailies-capture-today
+        :desc "Daily: Find"    "n r d f" #'org-roam-dailies-goto-date
+        :desc "Daily: Yesterday" "n r d y" #'org-roam-dailies-capture-yesterday
+        :desc "Daily: Tomorrow"  "n r d m" #'org-roam-dailies-capture-tomorrow))
+
+;; --- Optional: Org-roam UI (browser graph) ---
+(use-package! org-roam-ui
+  :after org-roam
+  :config
+  (setq org-roam-ui-sync-theme t
+        org-roam-ui-follow t
+        org-roam-ui-update-on-save t
+        org-roam-ui-open-on-start nil))  ;; set to t if you want it to auto-open
+
+
+
 ;; Which-key fast + readable
 (setq which-key-idle-delay 0.25)
 (after! which-key
   (setq which-key-max-description-length 50))
 
 ;; --------------------------- Terminal & File Tree -----------------
-(after! treemacs
-  (treemacs-follow-mode 1)
-  (treemacs-filewatch-mode 1))
-(map! :leader
-      :desc "Toggle Treemacs" "t t" #'treemacs)
+
+(setq treemacs-position 'left)
+
+(defun my/open-treemacs-on-startup ()
+  (require 'treemacs))
+
+(add-hook 'window-setup-hook  #'treemacs 'append)
 
 (after! vterm
   (setq vterm-shell (or (getenv "SHELL") "/bin/bash")))
